@@ -25,7 +25,7 @@ export default function VideoPlayer({ videoId, title, likes, dislikes, liked, di
   const videoRef    = useRef<HTMLVideoElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const progressRef  = useRef<HTMLDivElement>(null)
-  const hideRef      = useRef<ReturnType<typeof setTimeout>>()
+  const hideRef      = useRef<ReturnType<typeof setTimeout>>(undefined)
 
   const [playing, setPlaying]         = useState(false)
   const [current, setCurrent]         = useState(0)
