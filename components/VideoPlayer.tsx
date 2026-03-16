@@ -202,7 +202,19 @@ export default function VideoPlayer({ videoId, title, likes, dislikes, liked, di
           setCurrent(v.currentTime)
           if (v.buffered.length) setBuffered(v.buffered.end(v.buffered.length - 1))
         }}
-        onLoadedMetadata={() => { setDuration(videoRef.current?.duration || 0); setLoading(false) }}
+        onLoadedMetadata={() => {
+          const v = videoRef.current; if (!v) return
+          setDuration(v.duration)
+          setLoading(false)
+          
+          // Push metadata to DB if not already present
+          const q = v.videoWidth ? (v.videoHeight >= 2160 ? '4K' : v.videoHeight >= 1440 ? '2K' : v.videoHeight >= 1080 ? '1080p' : v.videoHeight >= 720 ? '720p' : v.videoHeight >= 480 ? '480p' : 'SD') : ''
+          fetch(`/api/videos/${videoId}/thumbnail`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ duration: v.duration, quality: q })
+          }).catch(() => {})
+        }}
         onWaiting={() => setLoading(true)}
         onCanPlay={() => setLoading(false)}
         onError={() => { setError('Video unavailable. Check your VIDEO_BASE_URL and filename.'); setLoading(false) }}
@@ -278,26 +290,25 @@ export default function VideoPlayer({ videoId, title, likes, dislikes, liked, di
             onMouseMove={handleHover}
             onMouseLeave={() => setShowHover(false)}
           >
-            {/* Thumbnail Preview */}
-            {showHover && duration > 0 && (
-              <div 
-                className="absolute bottom-6 -translate-x-1/2 flex flex-col items-center gap-1.5 pointer-events-none"
-                style={{ left: hoverX }}
-              >
-                <div className="w-32 aspect-video bg-black border border-white/20 rounded-lg overflow-hidden shadow-2xl">
-                  <video
-                    ref={previewVideoRef}
-                    src={src}
-                    muted
-                    preload="auto"
-                    className="w-full h-full object-cover"
-                  />
-                </div>
-                <span className="px-2 py-0.5 bg-black/80 text-white text-[10px] font-mono rounded border border-white/10">
-                  {fmt(hoverTime)}
-                </span>
+            {/* Seek Preview Tooltip (Always rendered for preloading) */}
+            <div
+              className={`absolute bottom-12 rounded-xl border-2 border-white/20 shadow-2xl overflow-hidden bg-black pointer-events-none flex flex-col items-center gap-1.5 p-1 transition-all duration-200 ${showHover ? 'opacity-100 scale-100 translate-y-0' : 'opacity-0 scale-95 translate-y-2'}`}
+              style={{ left: hoverX, transform: 'translateX(-50%)' }}
+            >
+              <div className="w-44 aspect-video bg-sv-card relative overflow-hidden rounded-lg">
+                <video
+                  ref={previewVideoRef}
+                  src={src}
+                  muted
+                  preload="auto"
+                  playsInline
+                  className="w-full h-full object-cover"
+                />
               </div>
-            )}
+              <span className="px-2 py-0.5 bg-black/80 text-white text-[10px] font-mono rounded border border-white/10">
+                {fmt(hoverTime)}
+              </span>
+            </div>
 
             <div className="absolute inset-y-0 left-0 bg-white/30 rounded-full" style={{ width: `${bPct}%` }} />
             <div className="absolute inset-y-0 left-0 bg-sv-accent rounded-full prog-bar" style={{ width: `${pct}%` }} />

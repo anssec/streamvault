@@ -15,6 +15,7 @@ export interface VideoItem {
   directory?: string
   thumbnail?: string
   duration?: number
+  quality?: string
   likes: number
   dislikes: number
   favoritedBy: string[]
@@ -27,6 +28,13 @@ interface VideoCardProps {
   video: VideoItem
   sessionId: string
   onFavChange?: (id: string, fav: boolean) => void
+}
+
+function fmtDuration(s?: number) {
+  if (!s || isNaN(s)) return ''
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = Math.floor(s % 60)
+  if (h) return `${h}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`
+  return `${m}:${String(sec).padStart(2,'0')}`
 }
 
 const prewarmed = new Set<string>()
@@ -128,6 +136,7 @@ export default function VideoCard({ video, sessionId, onFavChange }: VideoCardPr
                 title={video.title}
                 cachedThumbnail={video.thumbnail}
                 duration={video.duration}
+                quality={video.quality}
                 seekTo={5}
                 className="absolute inset-0"
               />
@@ -180,14 +189,7 @@ export default function VideoCard({ video, sessionId, onFavChange }: VideoCardPr
             </div>
           )}
 
-          {/* Size badge */}
-          {video.size && (
-            <span className="absolute bottom-2 right-2 text-[10px] bg-black/60 text-gray-400 px-1.5 py-0.5 rounded font-mono z-10">
-              {video.size}
-            </span>
-          )}
-
-          {/* Ext badge */}
+          {/* Ext badge is top-left, Duration (via Thumbnail) is bottom-right */}
           <span className="absolute top-2 left-2 text-[10px] uppercase bg-black/50 text-gray-400 px-1.5 py-0.5 rounded font-mono z-10">
             {video.extension}
           </span>
@@ -206,6 +208,21 @@ export default function VideoCard({ video, sessionId, onFavChange }: VideoCardPr
           <span className="text-[11px] text-sv-muted bg-sv-bg px-2 py-0.5 rounded-full">
             {video.category}
           </span>
+          {video.duration ? (
+            <span className="text-[11px] text-sv-accent bg-sv-accent/10 px-2 py-0.5 rounded-full font-medium">
+              {fmtDuration(video.duration)}
+            </span>
+          ) : null}
+          {video.quality && (
+            <span className="text-[11px] text-white bg-sv-accent/60 px-2 py-0.5 rounded-full font-bold uppercase tracking-tighter">
+              {video.quality}
+            </span>
+          )}
+          {video.size && (
+            <span className="text-[11px] text-sv-muted/80 bg-sv-bg px-2 py-0.5 rounded-full">
+              {video.size}
+            </span>
+          )}
           {video.directory && video.directory !== video.category && (
             <span className="text-[11px] text-sv-muted/60 bg-sv-bg px-2 py-0.5 rounded-full truncate max-w-[100px]">
               {video.directory}

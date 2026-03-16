@@ -9,8 +9,19 @@ interface VideoThumbnailProps {
   cachedThumbnail?: string
   /** Seek time in seconds for frame capture (default: 5) */
   duration?: number
+  quality?: string
   seekTo?: number
   className?: string
+}
+
+function getQuality(w: number, h: number) {
+  const short = Math.min(w, h)
+  if (short >= 2160) return '4K'
+  if (short >= 1440) return '2K'
+  if (short >= 1080) return '1080p'
+  if (short >= 720) return '720p'
+  if (short >= 480) return '480p'
+  return 'SD'
 }
 
 function fmt(s: number) {
@@ -30,6 +41,7 @@ export default function VideoThumbnail({
   title,
   cachedThumbnail,
   duration,
+  quality,
   seekTo = 5,
   className = '',
 }: VideoThumbnailProps) {
@@ -39,6 +51,7 @@ export default function VideoThumbnail({
   const [dataUrl, setDataUrl] = useState<string>(initial ?? '')
   const [state, setState] = useState<ThumbState>(initial ? 'ready' : 'generating')
   const [videoDuration, setVideoDuration] = useState<number>(duration ?? 0)
+  const [videoQuality, setVideoQuality] = useState<string>(quality ?? '')
 
   const containerRef = useRef<HTMLDivElement>(null)
   const attemptedRef = useRef(false)
@@ -51,8 +64,8 @@ export default function VideoThumbnail({
     // Already have thumbnail in memory?
     if (memCache.has(videoId)) {
       setDataUrl(memCache.get(videoId)!)
-      // If we also already have duration, we are truly done
-      if (videoDuration > 0) {
+      // If we also already have duration and quality, we are truly done
+      if (videoDuration > 0 && videoQuality) {
         setState('ready')
         return
       }
@@ -101,14 +114,16 @@ export default function VideoThumbnail({
           setDataUrl(url)
         }
 
+        const q = getQuality(video.videoWidth, video.videoHeight)
         setVideoDuration(video.duration)
+        setVideoQuality(q)
         setState('ready')
 
         // Persist to DB
         fetch(`/api/videos/${videoId}/thumbnail`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ thumbnail: url, duration: video.duration }),
+          body: JSON.stringify({ thumbnail: url, duration: video.duration, quality: q }),
         }).catch(() => {})
       } catch {
         setState('error')
@@ -137,8 +152,8 @@ export default function VideoThumbnail({
 
   // ── IntersectionObserver — only generate when card enters viewport ────────
   useEffect(() => {
-    // Generate if either thumbnail OR duration is missing
-    if (state === 'ready' && videoDuration > 0) return
+    // Generate if any metadata is missing
+    if (state === 'ready' && videoDuration > 0 && videoQuality) return
 
     const el = containerRef.current
     if (!el) return
@@ -154,7 +169,7 @@ export default function VideoThumbnail({
     )
     observer.observe(el)
     return () => observer.disconnect()
-  }, [captureAndSave, state, videoDuration])
+  }, [captureAndSave, state, videoDuration, videoQuality])
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -170,6 +185,11 @@ export default function VideoThumbnail({
           {videoDuration > 0 && (
             <span className="absolute bottom-1 right-1 bg-black/70 text-white text-[10px] px-1 py-0.5 rounded font-mono font-medium z-10">
               {fmt(videoDuration)}
+            </span>
+          )}
+          {videoQuality && (
+            <span className="absolute top-1 right-1 bg-sv-accent/80 text-white text-[9px] px-1 rounded font-bold z-10 uppercase tracking-tighter">
+              {videoQuality}
             </span>
           )}
         </>

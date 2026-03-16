@@ -34,11 +34,12 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   const { id } = await params
 
-  let thumbnail: string, duration: number
+  let thumbnail: string, duration: number, quality: string
   try {
     const body = await req.json()
     thumbnail = body.thumbnail
     duration = body.duration
+    quality = body.quality
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
@@ -60,18 +61,16 @@ export async function POST(req: NextRequest, { params }: Params) {
 
   await connectDB()
 
-  // Always set duration if provided. Only set thumbnail if missing.
-  const update: any = { $set: { duration } }
+  // Always set duration and quality if provided. Only set thumbnail if missing.
+  const update: any = { $set: { duration, quality } }
   if (thumbnail) {
-    // We only update the thumbnail if it doesn't exist or is empty to save bandwidth
-    // but duration can be updated regardless if it was 0
     update.$set.thumbnail = thumbnail
   }
 
   const updated = await Video.findByIdAndUpdate(
     id,
-    { $set: { thumbnail, duration } },
-    { new: true, select: 'thumbnail duration' }
+    update,
+    { new: true, select: 'thumbnail duration quality' }
   ).lean()
 
   if (!updated) {

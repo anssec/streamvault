@@ -9,6 +9,13 @@ import VideoThumbnail from '@/components/VideoThumbnail'
 import { getClientSessionId } from '@/lib/session'
 import { VideoItem } from '@/components/VideoCard'
 
+function fmtDuration(s?: number) {
+  if (!s || isNaN(s)) return ''
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = Math.floor(s % 60)
+  if (h) return `${h}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`
+  return `${m}:${String(sec).padStart(2,'0')}`
+}
+
 export default function WatchPage() {
   const { id } = useParams() as { id: string }
   const [sessionId] = useState(() => getClientSessionId())
@@ -112,6 +119,8 @@ export default function WatchPage() {
                   {video.extension}
                 </span>
                 <span className="text-sv-muted">{video.category}</span>
+                {video.duration ? <span className="text-sv-accent font-medium">{fmtDuration(video.duration)}</span> : null}
+                {video.quality ? <span className="px-1.5 py-0.5 bg-sv-accent/10 text-sv-accent rounded text-[10px] font-bold uppercase">{video.quality}</span> : null}
                 {video.size && <span className="text-sv-muted">{video.size}</span>}
                 {video.lastModified && <span className="text-sv-muted">{video.lastModified?.slice(0,10)}</span>}
               </div>
@@ -178,6 +187,7 @@ export default function WatchPage() {
                           title={v.title}
                           cachedThumbnail={v.thumbnail}
                           duration={v.duration}
+                          quality={v.quality}
                           className="w-full h-full object-cover"
                         />
                         <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
