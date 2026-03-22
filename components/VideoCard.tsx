@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import Link from 'next/link'
 import VideoThumbnail from './VideoThumbnail'
 
@@ -14,6 +14,8 @@ export interface VideoItem {
   category: string
   directory?: string
   thumbnail?: string
+  duration?: number
+  quality?: string
   likes: number
   dislikes: number
   favoritedBy: string[]
@@ -28,6 +30,15 @@ interface VideoCardProps {
   onFavChange?: (id: string, fav: boolean) => void
 }
 
+function fmtDuration(s?: number) {
+  if (!s || isNaN(s)) return ''
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = Math.floor(s % 60)
+  if (h) return `${h}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`
+  return `${m}:${String(sec).padStart(2,'0')}`
+}
+
+const prewarmed = new Set<string>()
+
 export default function VideoCard({ video, sessionId, onFavChange }: VideoCardProps) {
   const [likes, setLikes] = useState(video.likes)
   const [dislikes, setDislikes] = useState(video.dislikes)
@@ -35,9 +46,32 @@ export default function VideoCard({ video, sessionId, onFavChange }: VideoCardPr
   const [disliked, setDisliked] = useState(video.dislikedBy?.includes(sessionId))
   const [fav, setFav] = useState(video.favoritedBy?.includes(sessionId))
   const [busy, setBusy] = useState(false)
+  const [showPreview, setShowPreview] = useState(false)
+  const previewTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
 
   const isVideo = ['mp4','webm','mkv','avi','mov','m4v'].includes(video.extension)
   const isPdf   = video.extension === 'pdf'
+
+  function handleMouseEnter() {
+    handlePrewarm()
+    if (!isVideo) return
+    clearTimeout(previewTimer.current)
+    previewTimer.current = setTimeout(() => setShowPreview(true), 500)
+  }
+
+  function handleMouseLeave() {
+    clearTimeout(previewTimer.current)
+    setShowPreview(false)
+  }
+
+  function handlePrewarm() {
+    if (!isVideo || prewarmed.has(video._id)) return
+    prewarmed.add(video._id)
+    // Fetch first 1MB to warm up connection/proxy cache
+    fetch(`/api/stream/${video._id}`, {
+      headers: { 'Range': 'bytes=0-1048575' }
+    }).catch(() => {})
+  }
 
   async function handleLike(action: 'like' | 'unlike' | 'dislike' | 'undislike') {
     if (busy) return
@@ -79,7 +113,11 @@ export default function VideoCard({ video, sessionId, onFavChange }: VideoCardPr
   const href = isVideo ? `/watch/${video._id}` : video.filename
 
   return (
-    <div className="vid-card relative bg-sv-card border border-sv-border rounded-xl overflow-hidden card-glow group flex flex-col">
+    <div 
+      className="vid-card relative bg-sv-card border border-sv-border rounded-xl overflow-hidden card-glow group flex flex-col"
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+    >
 
       {/* Thumbnail / icon area */}
       <Link href={href} target={isPdf ? '_blank' : undefined} className="block">
@@ -97,9 +135,29 @@ export default function VideoCard({ video, sessionId, onFavChange }: VideoCardPr
                 videoId={video._id}
                 title={video.title}
                 cachedThumbnail={video.thumbnail}
+                duration={video.duration}
+                quality={video.quality}
                 seekTo={5}
                 className="absolute inset-0"
               />
+
+              {showPreview && (
+                <div className="absolute inset-0 z-20 animate-in fade-in duration-300">
+                  <video
+                    src={`/api/stream/${video._id}`}
+                    autoPlay
+                    muted
+                    loop
+                    playsInline
+                    className="w-full h-full object-cover"
+                  />
+                  <div className="absolute top-2 right-2 px-1.5 py-0.5 bg-black/60 text-white text-[10px] rounded flex items-center gap-1 backdrop-blur-sm">
+                    <div className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />
+                    PREVIEW
+                  </div>
+                </div>
+              )}
+
               {/* Hover play overlay */}
               <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/30 z-10">
                 <div className="w-12 h-12 rounded-full bg-white/20 backdrop-blur-sm border border-white/30 flex items-center justify-center">
@@ -131,14 +189,7 @@ export default function VideoCard({ video, sessionId, onFavChange }: VideoCardPr
             </div>
           )}
 
-          {/* Size badge */}
-          {video.size && (
-            <span className="absolute bottom-2 right-2 text-[10px] bg-black/60 text-gray-400 px-1.5 py-0.5 rounded font-mono z-10">
-              {video.size}
-            </span>
-          )}
-
-          {/* Ext badge */}
+          {/* Ext badge is top-left, Duration (via Thumbnail) is bottom-right */}
           <span className="absolute top-2 left-2 text-[10px] uppercase bg-black/50 text-gray-400 px-1.5 py-0.5 rounded font-mono z-10">
             {video.extension}
           </span>
@@ -157,6 +208,21 @@ export default function VideoCard({ video, sessionId, onFavChange }: VideoCardPr
           <span className="text-[11px] text-sv-muted bg-sv-bg px-2 py-0.5 rounded-full">
             {video.category}
           </span>
+          {video.duration ? (
+            <span className="text-[11px] text-sv-accent bg-sv-accent/10 px-2 py-0.5 rounded-full font-medium">
+              {fmtDuration(video.duration)}
+            </span>
+          ) : null}
+          {video.quality && (
+            <span className="text-[11px] text-white bg-sv-accent/60 px-2 py-0.5 rounded-full font-bold uppercase tracking-tighter">
+              {video.quality}
+            </span>
+          )}
+          {video.size && (
+            <span className="text-[11px] text-sv-muted/80 bg-sv-bg px-2 py-0.5 rounded-full">
+              {video.size}
+            </span>
+          )}
           {video.directory && video.directory !== video.category && (
             <span className="text-[11px] text-sv-muted/60 bg-sv-bg px-2 py-0.5 rounded-full truncate max-w-[100px]">
               {video.directory}

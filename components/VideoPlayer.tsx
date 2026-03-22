@@ -37,9 +37,22 @@ export default function VideoPlayer({ videoId, title, likes, dislikes, liked, di
   const [showCtrl, setShowCtrl]       = useState(true)
   const [loading, setLoading]         = useState(true)
   const [error, setError]             = useState('')
+  const [showHover, setShowHover]     = useState(false)
   const [speed, setSpeed]             = useState(1)
   const [showSpeeds, setShowSpeeds]   = useState(false)
   const [showVolume, setShowVolume]   = useState(false)
+  const [hoverTime, setHoverTime]     = useState(0)
+  const [hoverX, setHoverX]           = useState(0)
+
+  // Mobile Gestures
+  const [tapSide, setTapSide]         = useState<'left'|'right'|null>(null)
+  const [skipCount, setSkipCount]     = useState(0)
+  const [isLongPress, setIsLongPress] = useState(false)
+  const lastTapRef = useRef<{ time: number; side: 'left'|'right' } | null>(null)
+  const pressTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined)
+  const skipTimerRef  = useRef<ReturnType<typeof setTimeout>>(undefined)
+
+  const previewVideoRef = useRef<HTMLVideoElement>(null)
 
   const src = `/api/stream/${videoId}`
 
@@ -102,6 +115,69 @@ export default function VideoPlayer({ videoId, title, likes, dislikes, liked, di
     setSpeed(r); setShowSpeeds(false)
   }
 
+  function handleHover(e: React.MouseEvent<HTMLDivElement>) {
+    const rect = progressRef.current?.getBoundingClientRect()
+    if (!rect || !duration) return
+    const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width))
+    const p = x / rect.width
+    setHoverTime(p * duration)
+    setHoverX(x)
+    setShowHover(true)
+    if (previewVideoRef.current) {
+      previewVideoRef.current.currentTime = p * duration
+    }
+  }
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    const v = videoRef.current; if (!v) return
+    const rect = containerRef.current?.getBoundingClientRect()
+    if (!rect) return
+
+    const x = e.touches[0].clientX - rect.left
+    const side: 'left' | 'right' = x < rect.width / 2 ? 'left' : 'right'
+
+    // Long press logic
+    clearTimeout(pressTimerRef.current)
+    pressTimerRef.current = setTimeout(() => {
+      if (side === 'right') {
+        v.playbackRate = 2
+        setIsLongPress(true)
+      }
+    }, 500)
+
+    // Double tap logic
+    const now = Date.now()
+    if (lastTapRef.current && (now - lastTapRef.current.time) < 300 && lastTapRef.current.side === side) {
+      // Double tap detected
+      clearTimeout(skipTimerRef.current)
+      const newSkip = skipCount + 10
+      setSkipCount(newSkip)
+      setTapSide(side)
+
+      if (side === 'right') v.currentTime = Math.min(v.duration, v.currentTime + 10)
+      else v.currentTime = Math.max(0, v.currentTime - 10)
+
+      skipTimerRef.current = setTimeout(() => {
+        setSkipCount(0)
+        setTapSide(null)
+      }, 1000)
+
+      // Prevent single tap toggle
+      lastTapRef.current = null
+    } else {
+      lastTapRef.current = { time: now, side }
+    }
+  }
+
+  const handleTouchEnd = () => {
+    const v = videoRef.current; if (!v) return
+    clearTimeout(pressTimerRef.current)
+    if (isLongPress) {
+      v.playbackRate = speed
+      setIsLongPress(false)
+    }
+  }
+
   const pct  = duration ? (current / duration) * 100 : 0
   const bPct = duration ? (buffered / duration) * 100 : 0
 
@@ -111,12 +187,14 @@ export default function VideoPlayer({ videoId, title, likes, dislikes, liked, di
       className="relative bg-black w-full aspect-video rounded-2xl overflow-hidden select-none"
       onMouseMove={resetHide}
       onClick={toggle}
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
     >
       <video
         ref={videoRef}
         className="w-full h-full"
         src={src}
-        preload="metadata"
+        preload="auto"
         onPlay={() => setPlaying(true)}
         onPause={() => setPlaying(false)}
         onTimeUpdate={() => {
@@ -124,7 +202,19 @@ export default function VideoPlayer({ videoId, title, likes, dislikes, liked, di
           setCurrent(v.currentTime)
           if (v.buffered.length) setBuffered(v.buffered.end(v.buffered.length - 1))
         }}
-        onLoadedMetadata={() => { setDuration(videoRef.current?.duration || 0); setLoading(false) }}
+        onLoadedMetadata={() => {
+          const v = videoRef.current; if (!v) return
+          setDuration(v.duration)
+          setLoading(false)
+          
+          // Push metadata to DB if not already present
+          const q = v.videoWidth ? (v.videoHeight >= 2160 ? '4K' : v.videoHeight >= 1440 ? '2K' : v.videoHeight >= 1080 ? '1080p' : v.videoHeight >= 720 ? '720p' : v.videoHeight >= 480 ? '480p' : 'SD') : ''
+          fetch(`/api/videos/${videoId}/thumbnail`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ duration: v.duration, quality: q })
+          }).catch(() => {})
+        }}
         onWaiting={() => setLoading(true)}
         onCanPlay={() => setLoading(false)}
         onError={() => { setError('Video unavailable. Check your VIDEO_BASE_URL and filename.'); setLoading(false) }}
@@ -160,10 +250,30 @@ export default function VideoPlayer({ videoId, title, likes, dislikes, liked, di
         </div>
       )}
 
+      {/* Skip Visual Feedback */}
+      {tapSide && (
+        <div className={`absolute inset-y-0 ${tapSide === 'left' ? 'left-0 rounded-r-full' : 'right-0 rounded-l-full'} w-1/3 bg-white/10 flex flex-col items-center justify-center pointer-events-none animate-in fade-in zoom-in duration-300`}>
+          <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center mb-2">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="white" className={tapSide === 'left' ? 'rotate-180' : ''}>
+              <path d="M13 19l-7-7 7-7m8 14l-7-7 7-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+            </svg>
+          </div>
+          <span className="text-white font-bold">{tapSide === 'left' ? '-' : '+'}{skipCount}s</span>
+        </div>
+      )}
+
+      {/* 2x Speed Status */}
+      {isLongPress && (
+        <div className="absolute top-10 left-1/2 -translate-x-1/2 bg-black/60 backdrop-blur-md px-4 py-1.5 rounded-full border border-white/10 flex items-center gap-2 z-30 animate-in fade-in slide-in-from-top-2">
+          <div className="w-2 h-2 bg-sv-accent rounded-full animate-pulse" />
+          <span className="text-white text-xs font-bold tracking-widest">2X SPEED</span>
+        </div>
+      )}
+
       {/* Controls */}
       <div
         className={`absolute inset-0 flex flex-col justify-end transition-opacity duration-300 ${showCtrl ? 'opacity-100' : 'opacity-0'}`}
-        onClick={e => e.stopPropagation()}
+        onClick={e => { if (e.target === e.currentTarget) toggle(); e.stopPropagation() }}
         style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.4) 40%, transparent 70%)' }}
       >
         {/* Title bar */}
@@ -177,7 +287,29 @@ export default function VideoPlayer({ videoId, title, likes, dislikes, liked, di
             ref={progressRef}
             className="relative h-1 bg-white/20 rounded-full cursor-pointer group/bar hover:h-2.5 transition-all"
             onClick={seek}
+            onMouseMove={handleHover}
+            onMouseLeave={() => setShowHover(false)}
           >
+            {/* Seek Preview Tooltip (Always rendered for preloading) */}
+            <div
+              className={`absolute bottom-12 rounded-xl border-2 border-white/20 shadow-2xl overflow-hidden bg-black pointer-events-none flex flex-col items-center gap-1.5 p-1 transition-all duration-200 ${showHover ? 'opacity-100 scale-100 translate-y-0' : 'opacity-0 scale-95 translate-y-2'}`}
+              style={{ left: hoverX, transform: 'translateX(-50%)' }}
+            >
+              <div className="w-44 aspect-video bg-sv-card relative overflow-hidden rounded-lg">
+                <video
+                  ref={previewVideoRef}
+                  src={src}
+                  muted
+                  preload="auto"
+                  playsInline
+                  className="w-full h-full object-cover"
+                />
+              </div>
+              <span className="px-2 py-0.5 bg-black/80 text-white text-[10px] font-mono rounded border border-white/10">
+                {fmt(hoverTime)}
+              </span>
+            </div>
+
             <div className="absolute inset-y-0 left-0 bg-white/30 rounded-full" style={{ width: `${bPct}%` }} />
             <div className="absolute inset-y-0 left-0 bg-sv-accent rounded-full prog-bar" style={{ width: `${pct}%` }} />
             <div className="absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full opacity-0 group-hover/bar:opacity-100 transition-opacity shadow"

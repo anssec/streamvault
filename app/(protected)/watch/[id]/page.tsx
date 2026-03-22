@@ -5,8 +5,16 @@ import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import Navbar from '@/components/Navbar'
 import VideoPlayer from '@/components/VideoPlayer'
+import VideoThumbnail from '@/components/VideoThumbnail'
 import { getClientSessionId } from '@/lib/session'
 import { VideoItem } from '@/components/VideoCard'
+
+function fmtDuration(s?: number) {
+  if (!s || isNaN(s)) return ''
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = Math.floor(s % 60)
+  if (h) return `${h}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`
+  return `${m}:${String(sec).padStart(2,'0')}`
+}
 
 export default function WatchPage() {
   const { id } = useParams() as { id: string }
@@ -111,6 +119,8 @@ export default function WatchPage() {
                   {video.extension}
                 </span>
                 <span className="text-sv-muted">{video.category}</span>
+                {video.duration ? <span className="text-sv-accent font-medium">{fmtDuration(video.duration)}</span> : null}
+                {video.quality ? <span className="px-1.5 py-0.5 bg-sv-accent/10 text-sv-accent rounded text-[10px] font-bold uppercase">{video.quality}</span> : null}
                 {video.size && <span className="text-sv-muted">{video.size}</span>}
                 {video.lastModified && <span className="text-sv-muted">{video.lastModified?.slice(0,10)}</span>}
               </div>
@@ -170,17 +180,29 @@ export default function WatchPage() {
               <div className="space-y-3">
                 {related.map(v => (
                   <Link key={v._id} href={`/watch/${v._id}`}>
-                    <div className="flex gap-3 items-center p-2.5 rounded-xl hover:bg-sv-card border border-transparent hover:border-sv-border transition-colors group">
-                      <div className="w-10 h-10 rounded-lg bg-sv-card border border-sv-border flex items-center justify-center flex-shrink-0">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="#3b82f6">
-                          <polygon points="5 3 19 12 5 21 5 3"/>
-                        </svg>
+                    <div className="flex gap-3 p-2 rounded-xl hover:bg-sv-card border border-transparent hover:border-sv-border transition-colors group">
+                      <div className="w-24 aspect-video rounded-lg overflow-hidden flex-shrink-0 relative">
+                        <VideoThumbnail
+                          videoId={v._id}
+                          title={v.title}
+                          cachedThumbnail={v.thumbnail}
+                          duration={v.duration}
+                          quality={v.quality}
+                          className="w-full h-full object-cover"
+                        />
+                        <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="white">
+                            <polygon points="5 3 19 12 5 21 5 3"/>
+                          </svg>
+                        </div>
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-white text-sm font-medium truncate group-hover:text-sv-accent transition-colors">
+                      <div className="flex-1 min-w-0 flex flex-col justify-center">
+                        <p className="text-white text-xs font-medium line-clamp-2 group-hover:text-sv-accent transition-colors leading-snug">
                           {v.title}
                         </p>
-                        <p className="text-sv-muted text-xs mt-0.5">{v.size || v.extension.toUpperCase()}</p>
+                        <p className="text-sv-muted text-[10px] mt-1 uppercase font-semibold">
+                          {v.extension} {v.size && `• ${v.size}`}
+                        </p>
                       </div>
                     </div>
                   </Link>
